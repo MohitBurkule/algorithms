@@ -58,6 +58,21 @@ def _euler(parent, m):
 
 # ---------------------------------------------------------------- naive
 class Naive:
+    """Naive walk-up: O(depth) per query, O(n) preprocessing.
+
+    Preprocessing: O(n) to compute depths via DFS. Storage: O(n).
+
+    Query: Bring both nodes to the same depth (O(depth)), then walk both up
+    in sync until they meet (O(depth)). For a random tree, depth is O(log n).
+
+    Why: Simple and minimal preprocessing. Works by observing that the LCA of
+    (u, v) is the first common ancestor when walking up from both nodes.
+    Equalize depths first so both pointers move up together.
+
+    Wins on: ONE_QUERY (no expensive preprocessing), RAM, NETWORK, PARALLEL
+    (low auxiliary space and simple reads). Also wins on TAPE (depths are
+    computed in one DFS pass, then queries walk up parent chains).
+    """
     def __init__(self, parent, m):
         self.p = parent
         self.d = _depths(parent, m)
@@ -77,6 +92,22 @@ class Naive:
 
 # ---------------------------------------------------------------- binary lifting
 class BinaryLift:
+    """Precompute 2^k-th ancestors: O(n log n) preprocessing, O(log n) query.
+
+    Preprocessing: Build a table up[v][k] where up[v][k] = 2^k-th ancestor of v.
+    up[v][0] = parent[v]. up[v][k] = up[up[v][k-1]][k-1] (jump 2^(k-1) twice).
+    This takes O(n log n) space and O(n log n) time. Storage: O(n log n).
+
+    Query: Bring both to the same depth using binary lifting (write diff in binary,
+    use precomputed jumps). Then binary search on ancestors: for k from log n down
+    to 0, if up[k][u] != up[k][v], jump both up by 2^k. This takes O(log n) reads.
+
+    Why: Precomputed ancestors allow O(log n) queries. The trade-off is the
+    O(n log n) space for the table.
+
+    Wins on: MANY_QUERIES with moderate space constraints.
+    Loses on: ONE_QUERY (preprocessing wasted), SSD (O(n log n) reads scatter).
+    """
     def __init__(self, parent, m):
         n = len(parent)
         self.d = _depths(parent, m)
@@ -110,6 +141,26 @@ class BinaryLift:
 
 # ---------------------------------------------------------------- sparse table
 class SparseTable:
+    """Euler tour + RMQ sparse table: O(n log n) preprocessing, O(1) query.
+
+    Preprocessing:
+    1. DFS to build Euler tour (O(n)): record each node and its depth at each
+       visit (and visit on the way back up). The tour is 2n-1 elements.
+    2. For each node, record its first position in the tour (O(n)).
+    3. Build RMQ sparse table: ST[i][j] = index of min depth in tour[i..i+2^j-1].
+       This is O(n log n) time and space.
+
+    Query: Find positions of u and v in the tour. The LCA is the node with
+    minimum depth in tour[l..r]. Use the sparse table to answer this in O(1):
+    find the largest power of 2 that fits in [l, r], query two overlapping
+    ranges, and return the one with smaller depth.
+
+    Why: Euler tour + RMQ is the classic trick. The depth constraint (±1 per
+    step) is not exploited here, unlike FCB.
+
+    Wins on: MANY_QUERIES with no extra space constraints.
+    Loses on: SSD (O(n log n) space penalty), ONE_QUERY (preprocessing overhead).
+    """
     def __init__(self, parent, m):
         self.e, self.f, self.d = _euler(parent, m)
         E = len(self.e)
@@ -138,6 +189,30 @@ class SparseTable:
 
 # ---------------------------------------------------------------- Farach-Colton & Bender
 class FCB:
+    """Farach-Colton & Bender: O(n) preprocessing, O(1) query (tight space!).
+
+    The trick: Euler tour depths follow a ±1 pattern (depth changes by ±1 at
+    each step). This means there are only 2^(log n / 2) = sqrt(n) distinct
+    ±1 patterns. Precompute answers for every query within each pattern block.
+
+    Preprocessing:
+    1. Euler tour (O(n)): like sparse table.
+    2. Divide into blocks of size B = log n / 2.
+    3. Build sparse table over block minima (O(n/B * log(n/B)) = O(n)).
+    4. For each ±1 signature: precompute in-block RMQ (O(B²) per signature,
+       but sum over all signatures = O(n)).
+
+    Query: At most 3 table lookups:
+      - If both in the same block: in-block lookup.
+      - Otherwise: query block minima for the middle, then in-block for edges.
+
+    Why: The ±1 constraint is the key. Without exploiting it, FCB is no better
+    than sparse table. With it, preprocessing is O(n) instead of O(n log n).
+
+    Wins on: MANY_QUERIES + tight space (O(n) vs O(n log n)), HDD (seeks),
+    or POINTER heavy (the O(n) space is tight).
+    Loses on: ONE_QUERY (preprocessing overhead), SSD (O(n) is still expensive).
+    """
     def __init__(self, parent, m):
         self.e, self.f, self.d = _euler(parent, m)
         key = [self.d[v] for v in self.e]

@@ -47,6 +47,20 @@ class DList:
 
 
 def relink(lst: DList, m: Meter):
+    """Classic in-place reversal: swap prev/next pointers of every node.
+
+    Complexity: O(n) pointer changes (2 per node), O(n) reads (read cur.prev/next),
+    but 0 value writes. Space: O(1).
+
+    Why: Traverse the list once, swapping prev and next pointers. Each swap is 2
+    pointer changes. At the end, swap head and tail to point in the new direction.
+
+    Wins on: SSD, HDD, TAPE (write cost for values is expensive; zero value writes
+    beats any algorithm that must swap values). POINTER machines lose because
+    pointer changes are costly, but still win over swap_payloads if writes are
+    very expensive (e.g., write=400 on SSD).
+    Loses on: POINTER (2n pointer changes are expensive; flip_direction wins).
+    """
     cur = lst.head
     while cur:
         cur.prev, cur.next = cur.next, cur.prev
@@ -57,6 +71,20 @@ def relink(lst: DList, m: Meter):
 
 
 def swap_payloads(lst: DList, m: Meter):
+    """Reverse by swapping values, not pointers.
+
+    Complexity: O(n/2) swaps = O(n) reads and writes to values. 0 pointer changes.
+    Space: O(1).
+
+    Why: Walk from both ends of the list (following existing pointers, which are
+    never changed), and swap the values. Each swap is 1 read + 1 write per value.
+
+    Wins on: RAM, NETWORK, PARALLEL (pointer changes are free; reads/writes are cheap).
+    Also wins on POINTER machines if writes are cheaper than pointer_change.
+    Loses on: SSD, HDD, TAPE (writes are expensive; relink wins despite 2n pointer
+    changes, because SSD write cost >> pointer cost). Also loses on POINTER if
+    pointer_change is cheap relative to writes.
+    """
     a, b = lst.head, lst.tail
     i = 0
     while a is not b and a.prev is not b:
@@ -66,6 +94,23 @@ def swap_payloads(lst: DList, m: Meter):
 
 
 def flip_direction(lst: DList, m: Meter):
+    """Defer cost to traversals: swap head/tail, add a reversed flag.
+
+    Complexity: O(1) reversal time (only swap 2 pointers and 1 boolean). But
+    every future traversal pays O(n) extra compares (check the flag per step).
+    Space: O(1).
+
+    Why: The reversal cost is deferred to later traversals. If you reverse but
+    never traverse, you win. If you reverse and then traverse many times, you
+    lose because each traversal does one extra compare per node.
+
+    Wins on: POINTER (only 2 pointer changes, minimal cost). If you reverse but
+    don't traverse (e.g., pass the reversed list to a method that doesn't care
+    about direction), this is optimal.
+    Loses on: Most machines after multiple traversals (the per-traversal compare
+    cost adds up). In the benchmark, we do 3 traversals, so the cost is 3n
+    compares, which outweighs the O(1) reversal cost.
+    """
     lst.head, lst.tail = lst.tail, lst.head
     lst.reversed = not lst.reversed
     m.relink(2)

@@ -15,6 +15,13 @@ B = 64
 
 
 def linear(arr, x, m, _aux=None):
+    """Linear scan: O(n) reads, O(n) compares in worst case.
+
+    Why: Just scan from left to right, compare each element, stop when found.
+    Worst case: element is at the end or not in the array.
+
+    Wins on: Nothing (binary and variants always beat it for sorted arrays).
+    """
     for i, v in enumerate(arr):
         m.touch_read(i); m.cmp()
         if v >= x:
@@ -23,6 +30,17 @@ def linear(arr, x, m, _aux=None):
 
 
 def binary(arr, x, m, _aux=None):
+    """Binary search: O(log n) reads and compares, but random access.
+
+    Why: Each mid calculation is at a new, unpredictable address. Even though
+    we only do log n probes (cutting the search space in half each time), each
+    probe is a seek away from the last one.
+
+    Complexity: O(log n) compares, reads, and seeks (each read is far from the
+    last, so each is counted as a seek).
+
+    Wins on: Nothing in this benchmark (eytzinger beats it by improving locality).
+    """
     lo, hi = 0, len(arr)
     while lo < hi:
         mid = (lo + hi) // 2
@@ -47,6 +65,22 @@ def build_eytzinger(arr):
 
 
 def eytzinger(arr, x, m, ey):
+    """Breadth-first tree layout: O(log n) seeks, but cache-friendly.
+
+    Why: Layout the binary search tree in breadth-first order. Element at index i
+    has children at 2i and 2i+1. When we read element i and it's not the target,
+    we either go left (2i) or right (2i+1). Both children are close together in
+    memory (within a cache line or disk block), so we're likely to hit the same
+    block on the next read.
+
+    Complexity: O(log n) compares and reads (same as binary search), but with
+    better cache locality. However, in seek count, it's the same: O(log n) reads
+    that are far apart.
+
+    Wins on: RAM, NETWORK, PARALLEL (the cache clustering effect reduces the
+    cost per read, even though seek count is the same).
+    Loses on: HDD, TAPE (fixed seek cost per probe defeats the clustering).
+    """
     k = 1
     while k < len(ey):
         m.touch_read(k); m.cmp()
@@ -65,6 +99,25 @@ def build_btree(arr):
 
 
 def b_tree(arr, x, m, levels):
+    """B-tree: O(log_B n) seeks, each followed by B sequential reads.
+
+    Why: A B-tree with branching factor B has O(log_B n) levels. At each level,
+    you compare against B separators (log B comparisons via binary search), then
+    read B elements sequentially from that block. The key insight: one fixed seek
+    cost to get to the block, then B elements read for cheap (sequential I/O).
+    This amortizes the seek cost over B elements.
+
+    Complexity: O(log_B n) seeks, O(log_B n * B) = O(log n / log B) reads,
+    O(log B * log_B n) = O(log n) compares.
+
+    For B = 64 (typical disk block size), a 1 million element array has
+    log_64(1M) ≈ 3 levels. Three seeks is far fewer than log(1M) = 20 seeks
+    for binary search, even though you read more elements per seek.
+
+    Wins on: HDD, TAPE (seeks dominate; fewer seeks beats fewer reads).
+    Loses on: RAM (the indirection and repeated binary search on B separators
+    is slower than a tight binary search loop on the full array).
+    """
     base, idx = 0, 0
     for lv in levels:
         lo = idx * B if lv is not levels[0] else 0
